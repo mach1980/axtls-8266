@@ -12,7 +12,7 @@
  *   this list of conditions and the following disclaimer in the documentation 
  *   and/or other materials provided with the distribution.
  * * Neither the name of the axTLS project nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software 
+ *   may be used to endorse or promote products derived from this software
  *   without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -66,6 +66,8 @@ static int send_cert_verify(SSL *ssl);
 EXP_FUNC SSL * STDCALL ssl_client_new(SSL_CTX *ssl_ctx, int client_fd, const
         uint8_t *session_id, uint8_t sess_id_size, SSL_EXTENSIONS* ssl_ext)
 {
+    
+    printf("ssl_client_new()\r\n");
     SSL *ssl = ssl_new(ssl_ctx, client_fd);
     ssl->version = SSL_PROTOCOL_VERSION_MAX; /* try top version first */
 
@@ -162,6 +164,7 @@ int do_clnt_handshake(SSL *ssl, int handshake_type, uint8_t *buf, int hs_len)
  */
 int do_client_connect(SSL *ssl)
 {
+    printf("do_client_connect() - begin\r\n");
     int ret = SSL_OK;
 
     send_client_hello(ssl);                 /* send the client hello */
@@ -174,8 +177,10 @@ int do_client_connect(SSL *ssl)
     {
         while (ssl->hs_status != SSL_OK)
         {
-            ret = ssl_read(ssl, NULL);
-            
+            printf("ssl_read() - begin\r\n");
+            uint8_t **buffer;
+            ret = ssl_read(ssl, buffer);
+            printf("ssl_read() - end\r\n");
             if (ret < SSL_OK)
                 break;
         }
@@ -183,6 +188,7 @@ int do_client_connect(SSL *ssl)
         ssl->hs_status = ret;            /* connected? */    
     }
 
+    printf("do_client_connect() - end\r\n");
     return ret;
 }
 
@@ -191,6 +197,7 @@ int do_client_connect(SSL *ssl)
  */
 static int send_client_hello(SSL *ssl)
 {
+    printf("send_client_hello() - begin\r\n");
     uint8_t *buf = ssl->bm_data;
     time_t tm = time(NULL);
     uint8_t *tm_ptr = &buf[6]; /* time will go here */
@@ -216,6 +223,8 @@ static int send_client_hello(SSL *ssl)
 
     memcpy(ssl->dc->client_random, &buf[6], SSL_RANDOM_SIZE);
     offset = 6 + SSL_RANDOM_SIZE;
+    
+    printf("part 1\r\n");
 
     /* give session resumption a go */
     if (IS_SET_SSL_FLAG(SSL_SESSION_RESUME))    /* set initially by user */
@@ -231,6 +240,8 @@ static int send_client_hello(SSL *ssl)
         buf[offset++] = 0;
     }
 
+    printf("part 2\r\n");
+    
     buf[offset++] = 0;              /* number of ciphers */
     buf[offset++] = NUM_PROTOCOLS*2;/* number of ciphers */
 
@@ -257,25 +268,42 @@ static int send_client_hello(SSL *ssl)
         ext_len += sizeof(g_sig_alg);
     }
 
+    printf("part 3\r\n");
+    
     if (ssl->extensions != NULL) {
+        
+        printf("part 4\r\n");
+        char* host_name = "slackbot";
+        ssl->extensions->host_name = host_name;
         /* send the host name if specified */
         if (ssl->extensions->host_name != NULL) {
-	    unsigned int host_len = strlen(ssl->extensions->host_name);
-
-	    buf[offset++] = 0;
-	    buf[offset++] = SSL_EXT_SERVER_NAME; /* server_name(0) (65535) */
-	    buf[offset++] = 0;
-	    buf[offset++] = host_len + 5; /* server_name length */
-	    buf[offset++] = 0;
-	    buf[offset++] = host_len + 3; /* server_list length */
-	    buf[offset++] = 0; /* host_name(0) (255) */
-	    buf[offset++] = 0;
-	    buf[offset++] = host_len; /* host_name length */
-	    strncpy((char*) &buf[offset], ssl->extensions->host_name, host_len);
-	    offset += host_len;
-	    ext_len += host_len + 9;
+            printf("part 5\r\n");
+            printf("host name is %s", ssl->extensions->host_name);
+            
+            // TODO Understand why this halts the processor
+            unsigned int host_len = strlen(ssl->extensions->host_name);
+            
+            printf("part 6\r\n");
+            
+            buf[offset++] = 0;
+            buf[offset++] = SSL_EXT_SERVER_NAME; /* server_name(0) (65535) */
+            buf[offset++] = 0;
+            buf[offset++] = host_len + 5; /* server_name length */
+            buf[offset++] = 0;
+            buf[offset++] = host_len + 3; /* server_list length */
+            buf[offset++] = 0; /* host_name(0) (255) */
+            buf[offset++] = 0;
+            buf[offset++] = host_len; /* host_name length */
+            
+            printf("part 7\r\n");
+            strncpy((char*) &buf[offset], ssl->extensions->host_name, host_len);
+            offset += host_len;
+            ext_len += host_len + 9;
         }
-
+        
+        printf("part 8\r\n");
+       
+        
         if (ssl->extensions->max_fragment_size) {
 	    buf[offset++] = 0;
 	    buf[offset++] = SSL_EXT_MAX_FRAGMENT_SIZE;
@@ -289,6 +317,8 @@ static int send_client_hello(SSL *ssl)
         }
     }
 
+    printf("part n\r\n");
+    
     if(ext_len > 0) {
     	// update the extensions length value
     	buf[ext_offset] = (uint8_t) ((ext_len >> 8) & 0xff);
@@ -296,6 +326,7 @@ static int send_client_hello(SSL *ssl)
     }
 
     buf[3] = offset - 4;            /* handshake size */
+    printf("send_client_hello() - end\r\n");
     return send_packet(ssl, PT_HANDSHAKE_PROTOCOL, NULL, offset);
 }
 
